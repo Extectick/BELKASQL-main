@@ -15,7 +15,7 @@ services:
       - --listen-peer-urls=http://0.0.0.0:2380
       - --initial-advertise-peer-urls=http://${ETCD_ADVERTISE_HOST}:2380
       - --initial-cluster=${ETCD_INITIAL_CLUSTER}
-      - --initial-cluster-state=new
+      - --initial-cluster-state=${ETCD_INITIAL_CLUSTER_STATE:-new}
       - --initial-cluster-token=${ETCD_CLUSTER_TOKEN}
       - --heartbeat-interval=${ETCD_HEARTBEAT_INTERVAL}
       - --election-timeout=${ETCD_ELECTION_TIMEOUT}
