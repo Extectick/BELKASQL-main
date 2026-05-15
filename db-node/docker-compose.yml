@@ -1,0 +1,164 @@
+services:
+  etcd:
+    image: gcr.io/etcd-development/etcd:v3.5.18
+    container_name: ${ETCD_CONTAINER_NAME}
+    hostname: ${ETCD_HOSTNAME}
+    restart: unless-stopped
+    environment:
+      ETCDCTL_API: "3"
+    command:
+      - /usr/local/bin/etcd
+      - --name=${ETCD_NAME}
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://${ETCD_ADVERTISE_HOST}:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://${ETCD_ADVERTISE_HOST}:2380
+      - --initial-cluster=${ETCD_INITIAL_CLUSTER}
+      - --initial-cluster-state=new
+      - --initial-cluster-token=${ETCD_CLUSTER_TOKEN}
+      - --heartbeat-interval=${ETCD_HEARTBEAT_INTERVAL}
+      - --election-timeout=${ETCD_ELECTION_TIMEOUT}
+    volumes:
+      - etcd_data:/etcd-data
+    ports:
+      - "${INTERNAL_BIND_IP}:${ETCD_CLIENT_PUBLISHED_PORT}:2379"
+      - "${INTERNAL_BIND_IP}:2380:2380"
+    healthcheck:
+      test: ["CMD", "etcdctl", "--endpoints=http://127.0.0.1:2379", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      belka-net:
+        ipv4_address: ${ETCD_IP}
+
+  db:
+    build:
+      context: .
+      dockerfile: docker/postgres-patroni/Dockerfile
+    container_name: ${DB_CONTAINER_NAME}
+    hostname: ${DB_HOSTNAME}
+    restart: unless-stopped
+    environment:
+      NODE_NAME: ${NODE_NAME}
+      NODE_API_HOST: ${NODE_API_HOST}
+      NODE_PG_HOST: ${NODE_PG_HOST}
+      BACKEND_HOST: 127.0.0.1
+      PATRONI_SCOPE: ${PATRONI_SCOPE}
+      ETCD_HOST_1: ${ETCD_HOST_1}
+      ETCD_HOST_2: ${ETCD_HOST_2}
+      ETCD_HOST_3: ${ETCD_HOST_3}
+      ETCD_ENDPOINTS: http://${ETCD_HOST_1}:2379,http://${ETCD_HOST_2}:2379,http://${ETCD_HOST_3}:2379
+      BACKREST_STANZA: ${BACKREST_STANZA}
+      BACKREST_S3_BUCKET: ${BACKREST_S3_BUCKET}
+      BACKREST_S3_ENDPOINT: ${BACKREST_S3_ENDPOINT}
+      BACKREST_S3_KEY: ${BACKREST_S3_KEY}
+      BACKREST_S3_SECRET: ${BACKREST_S3_SECRET}
+      BACKREST_S3_REGION: ${BACKREST_S3_REGION}
+      POSTGRES_SUPERUSER_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
+      APP_USER_PASSWORD: ${APP_USER_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./config/patroni.yml:/templates/patroni.yml:ro
+      - ./config/pgbackrest.conf:/templates/pgbackrest.conf:ro
+      - ./config/pgbouncer.ini:/templates/pgbouncer.ini:ro
+    ports:
+      - "${INTERNAL_BIND_IP}:5432:5432"
+      - "${INTERNAL_BIND_IP}:${PATRONI_API_PUBLISHED_PORT}:8008"
+      - "${INTERNAL_BIND_IP}:${PGBOUNCER_PUBLISHED_PORT}:6432"
+    depends_on:
+      etcd:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:8008/health >/dev/null && bash -lc '</dev/tcp/127.0.0.1/6432'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 25s
+    networks:
+      belka-net:
+        ipv4_address: ${DB_IP}
+        aliases:
+          - ${DB_HOSTNAME}
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: ${POSTGRES_EXPORTER_CONTAINER_NAME}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATA_SOURCE_NAME: postgresql://postgres:${POSTGRES_SUPERUSER_PASSWORD}@db:5432/postgres?sslmode=disable
+    ports:
+      - "${INTERNAL_BIND_IP}:${POSTGRES_EXPORTER_PUBLISHED_PORT}:9187"
+    networks:
+      belka-net:
+        ipv4_address: ${POSTGRES_EXPORTER_IP}
+
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:latest
+    container_name: ${NODE_EXPORTER_CONTAINER_NAME}
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($|/)
+    volumes:
+      - /:/host:ro
+    ports:
+      - "${INTERNAL_BIND_IP}:${NODE_EXPORTER_PUBLISHED_PORT}:9100"
+    networks:
+      belka-net:
+        ipv4_address: ${NODE_EXPORTER_IP}
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: ${PROMTAIL_CONTAINER_NAME}
+    restart: unless-stopped
+    command:
+      - -config.file=/etc/promtail/config.yml
+      - -config.expand-env=true
+    environment:
+      LOKI_PUSH_URL: ${LOKI_PUSH_URL}
+      PROMTAIL_NODE_LABEL: ${PROMTAIL_NODE_LABEL}
+      PROMTAIL_ROLE_LABEL: ${PROMTAIL_ROLE_LABEL}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ../observability-node/config/promtail.yml:/etc/promtail/config.yml:ro
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    networks:
+      belka-net:
+        ipv4_address: ${PROMTAIL_IP}
+
+  local-lb:
+    build:
+      context: .
+      dockerfile: docker/local-haproxy/Dockerfile
+    container_name: ${LOCAL_LB_CONTAINER_NAME}
+    hostname: ${LOCAL_LB_HOSTNAME}
+    restart: unless-stopped
+    environment:
+      LOCAL_DB_HOST: ${LOCAL_DB_HOST}
+      REMOTE_DB_HOST: ${REMOTE_DB_HOST}
+    ports:
+      - "${LOCAL_LB_WRITE_PUBLISHED_PORT}:5000"
+      - "${LOCAL_LB_READ_PUBLISHED_PORT}:5001"
+    volumes:
+      - ./config/local-haproxy.cfg:/templates/local-haproxy.cfg:ro
+    networks:
+      belka-net:
+        ipv4_address: ${LOCAL_LB_IP}
+        aliases:
+          - ${LOCAL_DB_DOMAIN}
+
+volumes:
+  etcd_data:
+  db_data:
+
+networks:
+  belka-net:
+    name: ${BELKA_NETWORK_NAME}
+    external: true

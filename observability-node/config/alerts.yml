@@ -1,0 +1,47 @@
+groups:
+  - name: belkasql-infra
+    rules:
+      - alert: PostgresExporterDown
+        expr: 'up{job="postgres_exporter"} == 0'
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'PostgreSQL exporter is down'
+          description: 'PostgreSQL exporter on {{ $labels.node }} is unreachable for more than 2 minutes.'
+
+      - alert: EtcdMemberDown
+        expr: 'up{job="etcd"} == 0'
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'etcd member is down'
+          description: 'etcd metrics endpoint on {{ $labels.node }} is unreachable for more than 2 minutes.'
+
+      - alert: HAProxyMetricsDown
+        expr: 'up{job="haproxy"} == 0'
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'HAProxy metrics endpoint is down'
+          description: 'HAProxy metrics on {{ $labels.node }} are unreachable for more than 2 minutes.'
+
+      - alert: MinIOMetricsDown
+        expr: 'up{job="minio"} == 0'
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'MinIO metrics endpoint is down'
+          description: 'MinIO metrics on {{ $labels.node }} are unreachable for more than 2 minutes.'
+
+      - alert: HostDiskPressureHigh
+        expr: '(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) < 0.15'
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Host free disk space is low'
+          description: '{{ $labels.instance }} has less than 15% free disk space for more than 10 minutes.'

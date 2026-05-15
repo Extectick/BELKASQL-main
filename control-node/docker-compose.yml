@@ -1,0 +1,77 @@
+services:
+  etcd:
+    image: gcr.io/etcd-development/etcd:v3.5.18
+    container_name: ${ETCD_CONTAINER_NAME}
+    hostname: ${ETCD_HOSTNAME}
+    restart: unless-stopped
+    environment:
+      ETCDCTL_API: "3"
+    command:
+      - /usr/local/bin/etcd
+      - --name=${ETCD_NAME}
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://${ETCD_ADVERTISE_HOST}:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://${ETCD_ADVERTISE_HOST}:2380
+      - --initial-cluster=${ETCD_INITIAL_CLUSTER}
+      - --initial-cluster-state=new
+      - --initial-cluster-token=${ETCD_CLUSTER_TOKEN}
+      - --heartbeat-interval=${ETCD_HEARTBEAT_INTERVAL}
+      - --election-timeout=${ETCD_ELECTION_TIMEOUT}
+    volumes:
+      - etcd_data:/etcd-data
+    ports:
+      - "${INTERNAL_BIND_IP}:${ETCD_CLIENT_PUBLISHED_PORT}:2379"
+      - "${INTERNAL_BIND_IP}:2380:2380"
+    healthcheck:
+      test: ["CMD", "etcdctl", "--endpoints=http://127.0.0.1:2379", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      belka-net:
+        ipv4_address: ${ETCD_IP}
+
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:latest
+    container_name: ${NODE_EXPORTER_CONTAINER_NAME}
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($|/)
+    volumes:
+      - /:/host:ro
+    ports:
+      - "${INTERNAL_BIND_IP}:${NODE_EXPORTER_PUBLISHED_PORT}:9100"
+    networks:
+      belka-net:
+        ipv4_address: ${NODE_EXPORTER_IP}
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: ${PROMTAIL_CONTAINER_NAME}
+    restart: unless-stopped
+    command:
+      - -config.file=/etc/promtail/config.yml
+      - -config.expand-env=true
+    environment:
+      LOKI_PUSH_URL: ${LOKI_PUSH_URL}
+      PROMTAIL_NODE_LABEL: ${PROMTAIL_NODE_LABEL}
+      PROMTAIL_ROLE_LABEL: ${PROMTAIL_ROLE_LABEL}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ../observability-node/config/promtail.yml:/etc/promtail/config.yml:ro
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    networks:
+      belka-net:
+        ipv4_address: ${PROMTAIL_IP}
+
+volumes:
+  etcd_data:
+
+networks:
+  belka-net:
+    name: ${BELKA_NETWORK_NAME}
+    external: true

@@ -1,0 +1,111 @@
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: ${MINIO_CONTAINER_NAME}
+    hostname: ${MINIO_HOSTNAME}
+    restart: unless-stopped
+    command: server /data --address ":9000" --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BROWSER_REDIRECT_URL: ${MINIO_BROWSER_REDIRECT_URL}
+      MINIO_PROMETHEUS_AUTH_TYPE: public
+    volumes:
+      - minio_data:/data
+      - ./certs/minio:/root/.minio/certs:ro
+    ports:
+      - "${INTERNAL_BIND_IP}:${MINIO_API_PUBLISHED_PORT}:9000"
+      - "${INTERNAL_BIND_IP}:${MINIO_CONSOLE_PUBLISHED_PORT}:9001"
+    networks:
+      belka-net:
+        ipv4_address: ${MINIO_IP}
+
+  minio-admin:
+    profiles: ["admin"]
+    image: minio/mc:latest
+    container_name: ${MINIO_ADMIN_CONTAINER_NAME}
+    hostname: ${MINIO_ADMIN_HOSTNAME}
+    restart: unless-stopped
+    depends_on:
+      - minio
+    environment:
+      MINIO_PRIMARY_HOST: ${MINIO_PRIMARY_HOST}
+      MINIO_PRIMARY_ROOT_USER: ${MINIO_PRIMARY_ROOT_USER}
+      MINIO_PRIMARY_ROOT_PASSWORD: ${MINIO_PRIMARY_ROOT_PASSWORD}
+      MINIO_SECONDARY_HOST: ${MINIO_SECONDARY_HOST}
+      MINIO_SECONDARY_ROOT_USER: ${MINIO_SECONDARY_ROOT_USER}
+      MINIO_SECONDARY_ROOT_PASSWORD: ${MINIO_SECONDARY_ROOT_PASSWORD}
+      PGBACKREST_S3_BUCKET: ${PGBACKREST_S3_BUCKET}
+    entrypoint: ["/bin/sh", "-c", "/usr/local/bin/minio-replication-init.sh && tail -f /dev/null"]
+    volumes:
+      - ./scripts/minio-replication-init.sh:/usr/local/bin/minio-replication-init.sh:ro
+    networks:
+      belka-net:
+        ipv4_address: ${MINIO_ADMIN_IP}
+
+  minio-mirror:
+    profiles: ["admin"]
+    image: minio/mc:latest
+    container_name: ${MINIO_MIRROR_CONTAINER_NAME}
+    hostname: ${MINIO_MIRROR_HOSTNAME}
+    restart: unless-stopped
+    depends_on:
+      - minio
+      - minio-admin
+    environment:
+      MINIO_PRIMARY_HOST: ${MINIO_PRIMARY_HOST}
+      MINIO_PRIMARY_ROOT_USER: ${MINIO_PRIMARY_ROOT_USER}
+      MINIO_PRIMARY_ROOT_PASSWORD: ${MINIO_PRIMARY_ROOT_PASSWORD}
+      MINIO_SECONDARY_HOST: ${MINIO_SECONDARY_HOST}
+      MINIO_SECONDARY_ROOT_USER: ${MINIO_SECONDARY_ROOT_USER}
+      MINIO_SECONDARY_ROOT_PASSWORD: ${MINIO_SECONDARY_ROOT_PASSWORD}
+      PGBACKREST_S3_BUCKET: ${PGBACKREST_S3_BUCKET}
+    entrypoint: ["/bin/sh", "/usr/local/bin/minio-mirror.sh"]
+    volumes:
+      - ./scripts/minio-mirror.sh:/usr/local/bin/minio-mirror.sh:ro
+    networks:
+      belka-net:
+        ipv4_address: ${MINIO_MIRROR_IP}
+
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:latest
+    container_name: ${NODE_EXPORTER_CONTAINER_NAME}
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($|/)
+    volumes:
+      - /:/host:ro
+    ports:
+      - "${INTERNAL_BIND_IP}:${NODE_EXPORTER_PUBLISHED_PORT}:9100"
+    networks:
+      belka-net:
+        ipv4_address: ${NODE_EXPORTER_IP}
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: ${PROMTAIL_CONTAINER_NAME}
+    restart: unless-stopped
+    command:
+      - -config.file=/etc/promtail/config.yml
+      - -config.expand-env=true
+    environment:
+      LOKI_PUSH_URL: ${LOKI_PUSH_URL}
+      PROMTAIL_NODE_LABEL: ${PROMTAIL_NODE_LABEL}
+      PROMTAIL_ROLE_LABEL: ${PROMTAIL_ROLE_LABEL}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ../observability-node/config/promtail.yml:/etc/promtail/config.yml:ro
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    networks:
+      belka-net:
+        ipv4_address: ${PROMTAIL_IP}
+
+volumes:
+  minio_data:
+
+networks:
+  belka-net:
+    name: ${BELKA_NETWORK_NAME}
+    external: true

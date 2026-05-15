@@ -1,0 +1,11 @@
+[Unit]
+Description=Run BELKASQL internal floating service IP reconciliation regularly
+
+[Timer]
+OnBootSec=10s
+OnUnitActiveSec=5s
+AccuracySec=2s
+Unit=belka-internal-service-ip.service
+
+[Install]
+WantedBy=timers.target

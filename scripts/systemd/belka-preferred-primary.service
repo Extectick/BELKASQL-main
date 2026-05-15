@@ -1,0 +1,9 @@
+[Unit]
+Description=BELKASQL preferred primary failback
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=CONFIG_FILE=/etc/belkasql/preferred-primary.env
+ExecStart=/usr/local/bin/belka-preferred-primary.sh

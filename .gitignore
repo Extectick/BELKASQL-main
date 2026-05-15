@@ -1,0 +1,53 @@
+# Secrets and local environment files
+*.env
+**/*.env
+!.env.example
+!**/.env.example
+
+# Local notes / task scratch
+Task.txt
+test.py
+test/
+steps/
+keys/
+
+# Local bundles / archives
+*.7z
+*.gz
+*.rar
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+
+# Python cache and virtual environments
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Logs and temp files
+*.log
+*.tmp
+*.bak
+*.bak-*
+*.orig
+
+# Generated deployment artifacts
+docs/generated/
+
+# Local runtime data that should not be versioned
+*.pid

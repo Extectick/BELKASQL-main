@@ -1,0 +1,78 @@
+scope: ${PATRONI_SCOPE}
+namespace: /service/
+name: ${NODE_NAME}
+
+restapi:
+  listen: 0.0.0.0:8008
+  connect_address: ${NODE_API_HOST}:8008
+
+etcd3:
+  hosts:
+    - ${ETCD_HOST_1}:2379
+    - ${ETCD_HOST_2}:2379
+    - ${ETCD_HOST_3}:2379
+
+bootstrap:
+  dcs:
+    ttl: 40
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576
+    synchronous_mode: true
+    synchronous_mode_strict: false
+    synchronous_node_count: 1
+    failsafe_mode: true
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+      parameters:
+        archive_mode: "on"
+        archive_command: 'pgbackrest --stanza=${BACKREST_STANZA} archive-push %p'
+        archive_timeout: 60s
+        hot_standby: "on"
+        max_replication_slots: 10
+        max_wal_senders: 10
+        wal_keep_size: 256MB
+        wal_compression: "on"
+        wal_level: replica
+        wal_log_hints: "on"
+        synchronous_commit: "on"
+  initdb:
+    - encoding: UTF8
+    - data-checksums
+  post_bootstrap: /usr/local/bin/post-bootstrap.sh
+  pg_hba:
+    - host all all 0.0.0.0/0 md5
+    - host replication replicator 0.0.0.0/0 md5
+    - host all all ::/0 md5
+    - host replication replicator ::/0 md5
+
+postgresql:
+  listen: 0.0.0.0:5432
+  connect_address: ${NODE_PG_HOST}:5432
+  data_dir: /var/lib/postgresql/data/pgdata
+  bin_dir: /usr/lib/postgresql/16/bin
+  pgpass: /tmp/pgpass
+  authentication:
+    superuser:
+      username: postgres
+      password: ${POSTGRES_SUPERUSER_PASSWORD}
+    replication:
+      username: replicator
+      password: ${REPLICATION_PASSWORD}
+    rewind:
+      username: postgres
+      password: ${POSTGRES_SUPERUSER_PASSWORD}
+  create_replica_methods:
+    - basebackup
+  basebackup:
+    checkpoint: fast
+  parameters:
+    unix_socket_directories: /var/run/postgresql
+  remove_data_directory_on_rewind_failure: true
+  remove_data_directory_on_diverged_timelines: true
+
+tags:
+  nofailover: false
+  noloadbalance: false
+  nosync: false

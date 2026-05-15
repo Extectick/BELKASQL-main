@@ -1,0 +1,74 @@
+services:
+  lb:
+    build:
+      context: .
+      dockerfile: docker/cloud-lb/Dockerfile
+    container_name: ${LB_CONTAINER_NAME}
+    hostname: ${LB_HOSTNAME}
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      LB_NAME: ${LB_NAME}
+      KEEPALIVED_STATE: ${KEEPALIVED_STATE}
+      KEEPALIVED_PRIORITY: ${KEEPALIVED_PRIORITY}
+      LB_IP: ${LB_IP}
+      KEEPALIVED_PEER_IP: ${KEEPALIVED_PEER_IP}
+      KEEPALIVED_VIP: ${KEEPALIVED_VIP}
+      KEEPALIVED_AUTH_PASS: ${KEEPALIVED_AUTH_PASS}
+      DB_HOST_A: ${DB_HOST_A}
+      DB_HOST_B: ${DB_HOST_B}
+    ports:
+      - "${LB_WRITE_PUBLISHED_PORT}:5000"
+      - "${LB_READ_PUBLISHED_PORT}:5001"
+      - "${LB_METRICS_PUBLISHED_PORT}:8404"
+    volumes:
+      - ./config/haproxy.cfg:/templates/haproxy.cfg:ro
+      - ./config/keepalived.conf:/templates/keepalived.conf:ro
+    networks:
+      belka-net:
+        ipv4_address: ${LB_IP}
+        aliases:
+          - ${DB_WRITE_DOMAIN}
+          - ${DB_READ_DOMAIN}
+
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:latest
+    container_name: ${NODE_EXPORTER_CONTAINER_NAME}
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($|/)
+    volumes:
+      - /:/host:ro
+    ports:
+      - "${NODE_EXPORTER_PUBLISHED_PORT}:9100"
+    networks:
+      belka-net:
+        ipv4_address: ${NODE_EXPORTER_IP}
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: ${PROMTAIL_CONTAINER_NAME}
+    restart: unless-stopped
+    command:
+      - -config.file=/etc/promtail/config.yml
+      - -config.expand-env=true
+    environment:
+      LOKI_PUSH_URL: ${LOKI_PUSH_URL}
+      PROMTAIL_NODE_LABEL: ${PROMTAIL_NODE_LABEL}
+      PROMTAIL_ROLE_LABEL: ${PROMTAIL_ROLE_LABEL}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ../observability-node/config/promtail.yml:/etc/promtail/config.yml:ro
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    networks:
+      belka-net:
+        ipv4_address: ${PROMTAIL_IP}
+
+networks:
+  belka-net:
+    name: ${BELKA_NETWORK_NAME}
+    external: true

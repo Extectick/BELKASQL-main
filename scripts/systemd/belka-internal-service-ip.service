@@ -1,0 +1,9 @@
+[Unit]
+Description=BELKASQL internal floating service IP reconciliation
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=CONFIG_FILE=/etc/belkasql/internal-service-ip.env
+ExecStart=/usr/local/bin/belka-internal-service-ip.sh

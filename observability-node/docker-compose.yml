@@ -1,0 +1,122 @@
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ${PROMETHEUS_CONTAINER_NAME}
+    hostname: ${PROMETHEUS_HOSTNAME}
+    restart: unless-stopped
+    entrypoint:
+      - /bin/sh
+      - /templates/start-prometheus.sh
+    environment:
+      CITY_A_HOST: ${CITY_A_HOST}
+      CITY_A_ETCD_METRICS_PORT: ${CITY_A_ETCD_METRICS_PORT}
+      CITY_A_POSTGRES_EXPORTER_PORT: ${CITY_A_POSTGRES_EXPORTER_PORT}
+      CITY_A_NODE_EXPORTER_PORT: ${CITY_A_NODE_EXPORTER_PORT}
+      CITY_B_HOST: ${CITY_B_HOST}
+      CITY_B_ETCD_METRICS_PORT: ${CITY_B_ETCD_METRICS_PORT}
+      CITY_B_POSTGRES_EXPORTER_PORT: ${CITY_B_POSTGRES_EXPORTER_PORT}
+      CITY_B_NODE_EXPORTER_PORT: ${CITY_B_NODE_EXPORTER_PORT}
+      CLOUD_CONTROL_HOST: ${CLOUD_CONTROL_HOST}
+      CLOUD_CONTROL_ETCD_SCRAPE_HOST: ${CLOUD_CONTROL_ETCD_SCRAPE_HOST:-}
+      CLOUD_CONTROL_NODE_EXPORTER_SCRAPE_HOST: ${CLOUD_CONTROL_NODE_EXPORTER_SCRAPE_HOST:-}
+      CLOUD_CONTROL_ETCD_METRICS_PORT: ${CLOUD_CONTROL_ETCD_METRICS_PORT}
+      CLOUD_CONTROL_NODE_EXPORTER_PORT: ${CLOUD_CONTROL_NODE_EXPORTER_PORT}
+      CLOUD_LB_A_HOST: ${CLOUD_LB_A_HOST}
+      CLOUD_LB_A_METRICS_PORT: ${CLOUD_LB_A_METRICS_PORT}
+      CLOUD_LB_A_NODE_EXPORTER_PORT: ${CLOUD_LB_A_NODE_EXPORTER_PORT}
+      CLOUD_LB_B_HOST: ${CLOUD_LB_B_HOST}
+      CLOUD_LB_B_METRICS_PORT: ${CLOUD_LB_B_METRICS_PORT}
+      CLOUD_LB_B_NODE_EXPORTER_PORT: ${CLOUD_LB_B_NODE_EXPORTER_PORT}
+      MINIO_PRIMARY_HOST: ${MINIO_PRIMARY_HOST}
+      MINIO_PRIMARY_API_SCRAPE_HOST: ${MINIO_PRIMARY_API_SCRAPE_HOST:-}
+      MINIO_PRIMARY_NODE_EXPORTER_SCRAPE_HOST: ${MINIO_PRIMARY_NODE_EXPORTER_SCRAPE_HOST:-}
+      MINIO_PRIMARY_API_PORT: ${MINIO_PRIMARY_API_PORT}
+      MINIO_PRIMARY_NODE_EXPORTER_PORT: ${MINIO_PRIMARY_NODE_EXPORTER_PORT}
+      MINIO_SECONDARY_HOST: ${MINIO_SECONDARY_HOST}
+      MINIO_SECONDARY_API_SCRAPE_HOST: ${MINIO_SECONDARY_API_SCRAPE_HOST:-}
+      MINIO_SECONDARY_NODE_EXPORTER_SCRAPE_HOST: ${MINIO_SECONDARY_NODE_EXPORTER_SCRAPE_HOST:-}
+      MINIO_SECONDARY_API_PORT: ${MINIO_SECONDARY_API_PORT}
+      MINIO_SECONDARY_NODE_EXPORTER_PORT: ${MINIO_SECONDARY_NODE_EXPORTER_PORT}
+    volumes:
+      - prometheus_data:/prometheus
+      - ./config/prometheus.yml.tpl:/templates/prometheus.yml.tpl:ro
+      - ./config/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./config/start-prometheus.sh:/templates/start-prometheus.sh:ro
+    ports:
+      - "${INTERNAL_BIND_IP}:${PROMETHEUS_PUBLISHED_PORT}:9090"
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    networks:
+      belka-net:
+        aliases:
+          - observability-prometheus
+
+  loki:
+    image: grafana/loki:latest
+    container_name: ${LOKI_CONTAINER_NAME}
+    hostname: ${LOKI_HOSTNAME}
+    restart: unless-stopped
+    command: -config.file=/etc/loki/config.yml
+    volumes:
+      - loki_data:/loki
+      - ./config/loki-config.yml:/etc/loki/config.yml:ro
+    ports:
+      - "${INTERNAL_BIND_IP}:${LOKI_PUBLISHED_PORT}:3100"
+    networks:
+      belka-net:
+        aliases:
+          - observability-loki
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: ${ALERTMANAGER_CONTAINER_NAME}
+    hostname: ${ALERTMANAGER_HOSTNAME}
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - alertmanager_data:/alertmanager
+      - ./config/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "${INTERNAL_BIND_IP}:${ALERTMANAGER_PUBLISHED_PORT}:9093"
+    networks:
+      belka-net:
+        aliases:
+          - observability-alertmanager
+
+  grafana:
+    image: grafana/grafana:10.4.8
+    container_name: ${GRAFANA_CONTAINER_NAME}
+    hostname: ${GRAFANA_HOSTNAME}
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "${INTERNAL_BIND_IP}:${GRAFANA_PUBLISHED_PORT}:3000"
+    depends_on:
+      - prometheus
+      - loki
+      - alertmanager
+    networks:
+      belka-net:
+        aliases:
+          - observability-grafana
+
+volumes:
+  prometheus_data:
+  loki_data:
+  grafana_data:
+  alertmanager_data:
+
+networks:
+  belka-net:
+    name: ${BELKA_NETWORK_NAME}
+    external: true
