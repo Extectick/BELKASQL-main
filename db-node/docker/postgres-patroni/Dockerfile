@@ -15,6 +15,7 @@ RUN apt-get update \
         ca-certificates \
         procps \
     && pip3 install --break-system-packages --no-cache-dir "patroni[etcd3]>=4.0,<5.0" \
+    && python3 -c "from pathlib import Path; p = Path('/usr/local/lib/python3.11/dist-packages/patroni/dcs/etcd3.py'); t = p.read_text(); o = \"                    self.version_prefix = '/v3alpha'\"; n = \"                    self.version_prefix = '/v3beta'\"; (_ for _ in ()).throw(SystemExit('expected patroni etcd3.py snippet not found')) if o not in t else p.write_text(t.replace(o, n, 1))" \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docker/postgres-patroni/entrypoint.sh /usr/local/bin/patroni-entrypoint.sh
