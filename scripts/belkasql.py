@@ -62,6 +62,7 @@ def run(cmd: list[str], cwd: Path | None = None, input_text: str | None = None, 
         cwd=str(cwd) if cwd else None,
         input=input_text,
         text=True,
+        errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         check=check,
@@ -817,6 +818,7 @@ def ensure_network_powershell(config: dict[str, Any]) -> str:
 
 
 def powershell_command(script: str) -> str:
+    script = "$ProgressPreference='SilentlyContinue'; " + script
     encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
     return f"powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand {encoded}"
 
@@ -1166,8 +1168,8 @@ def install_public_key_command(node: dict[str, Any], public_key: str) -> str:
             "$path = 'C:\\ProgramData\\ssh\\administrators_authorized_keys'; "
             "New-Item -ItemType Directory -Force -Path (Split-Path $path) | Out-Null; "
             "if (!(Test-Path $path)) { New-Item -ItemType File -Force -Path $path | Out-Null }; "
-            "$content = Get-Content -Raw -ErrorAction SilentlyContinue $path; "
-            "if ($content -notlike ('*' + $key + '*')) { Add-Content -Path $path -Value $key }; "
+            "$found = Select-String -LiteralPath $path -SimpleMatch $key -Quiet; "
+            "if (-not $found) { Add-Content -LiteralPath $path -Value $key -Encoding ascii }; "
             "icacls $path /inheritance:r /grant '*S-1-5-32-544:F' /grant '*S-1-5-18:F' | Out-Null; "
             "Restart-Service sshd -ErrorAction SilentlyContinue"
         )
