@@ -101,7 +101,11 @@ class BelkaSqlTests(unittest.TestCase):
     def test_native_ssh_args_include_identity_file(self) -> None:
         args = cli.ssh_args(2222, "keys/deploy")
 
-        self.assertEqual(args, ["ssh", "-i", "keys/deploy", "-o", "IdentitiesOnly=yes", "-p", "2222"])
+        self.assertIn("-i", args)
+        self.assertIn("keys/deploy", args)
+        self.assertIn("BatchMode=yes", args)
+        self.assertIn("StrictHostKeyChecking=accept-new", args)
+        self.assertEqual(args[-2:], ["-p", "2222"])
 
     def test_windows_install_public_key_uses_admin_authorized_keys(self) -> None:
         node = {"name": "city-a", "os": "windows"}

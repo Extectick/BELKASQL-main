@@ -785,7 +785,7 @@ def node_ssh_identity_file(node: dict[str, Any], config: dict[str, Any]) -> str:
 def ssh_args(port: int, identity_file: str = "") -> list[str]:
     args = ["ssh"]
     if identity_file:
-        args.extend(["-i", identity_file, "-o", "IdentitiesOnly=yes"])
+        args.extend(["-i", identity_file, "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new"])
     if port != 22:
         args.extend(["-p", str(port)])
     return args
@@ -794,7 +794,7 @@ def ssh_args(port: int, identity_file: str = "") -> list[str]:
 def scp_args(port: int, identity_file: str = "") -> list[str]:
     args = ["scp"]
     if identity_file:
-        args.extend(["-i", identity_file, "-o", "IdentitiesOnly=yes"])
+        args.extend(["-i", identity_file, "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new"])
     if port != 22:
         args.extend(["-P", str(port)])
     return args
