@@ -443,6 +443,11 @@ def parse_etcd_initial_cluster(value: str) -> list[tuple[str, str]]:
     return peers
 
 
+def add_if_present(target: dict[str, Any], key: str, value: str | None) -> None:
+    if value:
+        target[key] = value
+
+
 def cmd_adopt_env(args: argparse.Namespace) -> int:
     cluster_out = Path(args.cluster_out)
     secrets_out = Path(args.secrets_out)
@@ -496,6 +501,12 @@ def cmd_adopt_env(args: argparse.Namespace) -> int:
             "local_domain": env.get("LOCAL_DB_DOMAIN", f"db-{name}.internal"),
             "loki_push_url": env.get("LOKI_PUSH_URL", first_db.get("LOKI_PUSH_URL", "")),
         }
+        add_if_present(node, "db_ip", env.get("DB_IP"))
+        add_if_present(node, "etcd_ip", env.get("ETCD_IP"))
+        add_if_present(node, "local_lb_ip", env.get("LOCAL_LB_IP"))
+        add_if_present(node, "postgres_exporter_ip", env.get("POSTGRES_EXPORTER_IP"))
+        add_if_present(node, "node_exporter_ip", env.get("NODE_EXPORTER_IP"))
+        add_if_present(node, "promtail_ip", env.get("PROMTAIL_IP"))
         if host in peer_by_host:
             node["etcd_name"] = etcd_name
         known_node_names.add(name)
@@ -759,6 +770,36 @@ def node_ssh_password(node: dict[str, Any], config: dict[str, Any]) -> str:
     return str(node.get("ssh_password") or ssh.get("password") or "")
 
 
+def node_ssh_identity_file(node: dict[str, Any], config: dict[str, Any]) -> str:
+    ssh = config.get("ssh", {})
+    value = node.get("ssh_identity_file") or ssh.get("identity_file") or ""
+    if not value:
+        return ""
+    expanded = os.path.expandvars(os.path.expanduser(str(value)))
+    path = Path(expanded)
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    return str(path)
+
+
+def ssh_args(port: int, identity_file: str = "") -> list[str]:
+    args = ["ssh"]
+    if identity_file:
+        args.extend(["-i", identity_file, "-o", "IdentitiesOnly=yes"])
+    if port != 22:
+        args.extend(["-p", str(port)])
+    return args
+
+
+def scp_args(port: int, identity_file: str = "") -> list[str]:
+    args = ["scp"]
+    if identity_file:
+        args.extend(["-i", identity_file, "-o", "IdentitiesOnly=yes"])
+    if port != 22:
+        args.extend(["-P", str(port)])
+    return args
+
+
 def ps_quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
@@ -905,6 +946,31 @@ def run_paramiko_sequence(host: str, port: int, user: str, password: str, archiv
         client.close()
 
 
+def run_paramiko_command(host: str, port: int, user: str, password: str, command: str) -> None:
+    try:
+        import paramiko
+    except ImportError as exc:
+        raise ConfigError("password SSH transport requires Python package 'paramiko'") from exc
+
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        client.connect(
+            hostname=host,
+            port=port,
+            username=user,
+            password=password,
+            timeout=20,
+            banner_timeout=20,
+            auth_timeout=20,
+            look_for_keys=False,
+            allow_agent=False,
+        )
+        exec_paramiko(client, command)
+    finally:
+        client.close()
+
+
 def exec_paramiko(client: Any, command: str) -> None:
     stdin, stdout, stderr = client.exec_command(command, timeout=600)
     out = stdout.read().decode("utf-8", errors="replace")
@@ -989,13 +1055,15 @@ def cmd_apply(args: argparse.Namespace) -> int:
                 raise ConfigError(f"target has no host: {node.get('name')}")
             ssh_user = node_ssh_user(node, args.user)
             ssh_port = node_ssh_port(node, config)
-            ssh_password = node_ssh_password(node, config)
+            identity_file = node_ssh_identity_file(node, config)
+            ssh_password = "" if identity_file else node_ssh_password(node, config)
             user_host = f"{ssh_user}@{host}" if ssh_user else str(host)
             repo_dir = node_repo_dir(node, args.repo_dir)
             command = remote_role_command(node, repo_dir, config)
             print(f"target {node.get('name')} ({host})")
             print(f"  os: {node_os(node)}")
-            print(f"  ssh: {ssh_user}@{host}:{ssh_port}" + (" (password)" if ssh_password else " (ssh/scp)"))
+            transport = f"key {identity_file}" if identity_file else ("password" if ssh_password else "ssh/scp")
+            print(f"  ssh: {ssh_user}@{host}:{ssh_port} ({transport})")
             print(f"  sync: {archive} -> {user_host}:{repo_dir}")
             print(f"  run: {command}")
             if args.dry_run:
@@ -1007,15 +1075,10 @@ def cmd_apply(args: argparse.Namespace) -> int:
                 if not require_tool("scp") or not require_tool("ssh"):
                     raise ConfigError("apply requires ssh and scp in PATH when no ssh_password is configured")
                 ssh_target = f"{ssh_user}@{host}" if ssh_user else str(host)
-                ssh_args = ["ssh"]
-                scp_args = ["scp"]
-                if ssh_port != 22:
-                    ssh_args.extend(["-p", str(ssh_port)])
-                    scp_args.extend(["-P", str(ssh_port)])
-                run([*ssh_args, ssh_target, remote_prepare_command(node, repo_dir)])
-                run([*scp_args, str(archive), f"{ssh_target}:{remote_archive}"])
-                run([*ssh_args, ssh_target, remote_extract_command(node, remote_archive, repo_dir)])
-                run([*ssh_args, ssh_target, command])
+                run([*ssh_args(ssh_port, identity_file), ssh_target, remote_prepare_command(node, repo_dir)])
+                run([*scp_args(ssh_port, identity_file), str(archive), f"{ssh_target}:{remote_archive}"])
+                run([*ssh_args(ssh_port, identity_file), ssh_target, remote_extract_command(node, remote_archive, repo_dir)])
+                run([*ssh_args(ssh_port, identity_file), ssh_target, command])
     finally:
         archive.unlink(missing_ok=True)
     return 0
@@ -1056,45 +1119,99 @@ def cmd_preflight_remote(args: argparse.Namespace) -> int:
             continue
         ssh_user = node_ssh_user(node, args.user)
         ssh_port = node_ssh_port(node, config)
-        ssh_password = node_ssh_password(node, config)
+        identity_file = node_ssh_identity_file(node, config)
+        ssh_password = "" if identity_file else node_ssh_password(node, config)
         repo_dir = node_repo_dir(node, args.repo_dir)
         command = remote_preflight_command(node, repo_dir, config)
-        print(f"target {node.get('name')} ({node_os(node)}) {ssh_user}@{host}:{ssh_port}")
+        transport = f"key {identity_file}" if identity_file else ("password" if ssh_password else "ssh/scp")
+        print(f"target {node.get('name')} ({node_os(node)}) {ssh_user}@{host}:{ssh_port} ({transport})")
         if args.dry_run:
             print(f"  run: {command}")
             continue
         try:
             if ssh_password:
-                try:
-                    import paramiko
-                except ImportError as exc:
-                    raise ConfigError("password SSH transport requires Python package 'paramiko'") from exc
-                client = paramiko.SSHClient()
-                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                try:
-                    client.connect(
-                        hostname=str(host),
-                        port=ssh_port,
-                        username=ssh_user,
-                        password=ssh_password,
-                        timeout=20,
-                        banner_timeout=20,
-                        auth_timeout=20,
-                        look_for_keys=False,
-                        allow_agent=False,
-                    )
-                    exec_paramiko(client, command)
-                finally:
-                    client.close()
+                run_paramiko_command(str(host), ssh_port, ssh_user, ssh_password, command)
             else:
-                ssh_args = ["ssh"]
-                if ssh_port != 22:
-                    ssh_args.extend(["-p", str(ssh_port)])
                 ssh_target = f"{ssh_user}@{host}" if ssh_user else str(host)
-                result = run([*ssh_args, ssh_target, command], check=False)
+                result = run([*ssh_args(ssh_port, identity_file), ssh_target, command], check=False)
                 print(result.stdout, end="")
                 if result.returncode != 0:
                     raise ConfigError(f"remote preflight failed with exit code {result.returncode}")
+            print(f"ok: {node.get('name')}")
+        except Exception as exc:
+            failures += 1
+            print(f"fail: {node.get('name')}: {exc}", file=sys.stderr)
+    return 1 if failures else 0
+
+
+def ensure_ssh_key(path_arg: str, dry_run: bool) -> Path:
+    key_path = Path(os.path.expandvars(os.path.expanduser(path_arg)))
+    if not key_path.is_absolute():
+        key_path = Path.cwd() / key_path
+    if key_path.exists():
+        return key_path
+    print(f"create SSH key: {key_path}")
+    if dry_run:
+        return key_path
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+    run(["ssh-keygen", "-t", "ed25519", "-f", str(key_path), "-N", "", "-C", "belkasql-deploy"])
+    return key_path
+
+
+def install_public_key_command(node: dict[str, Any], public_key: str) -> str:
+    if node_os(node) == "windows":
+        script = (
+            "$ErrorActionPreference='Stop'; "
+            f"$key = {ps_quote(public_key)}; "
+            "$path = 'C:\\ProgramData\\ssh\\administrators_authorized_keys'; "
+            "New-Item -ItemType Directory -Force -Path (Split-Path $path) | Out-Null; "
+            "if (!(Test-Path $path)) { New-Item -ItemType File -Force -Path $path | Out-Null }; "
+            "$content = Get-Content -Raw -ErrorAction SilentlyContinue $path; "
+            "if ($content -notlike ('*' + $key + '*')) { Add-Content -Path $path -Value $key }; "
+            "icacls $path /inheritance:r /grant '*S-1-5-32-544:F' /grant '*S-1-5-18:F' | Out-Null; "
+            "Restart-Service sshd -ErrorAction SilentlyContinue"
+        )
+        return powershell_command(script)
+    key = shlex.quote(public_key)
+    return (
+        "set -e; "
+        "mkdir -p ~/.ssh; chmod 700 ~/.ssh; touch ~/.ssh/authorized_keys; "
+        f"grep -qxF {key} ~/.ssh/authorized_keys || printf '%s\\n' {key} >> ~/.ssh/authorized_keys; "
+        "chmod 600 ~/.ssh/authorized_keys"
+    )
+
+
+def cmd_bootstrap_ssh_keys(args: argparse.Namespace) -> int:
+    _, config = load_config(args.config)
+    key_path = ensure_ssh_key(args.key_path, args.dry_run)
+    public_path = Path(str(key_path) + ".pub")
+    if args.dry_run and not public_path.exists():
+        public_key = "ssh-ed25519 DRY-RUN belkasql-deploy"
+    else:
+        if not public_path.exists():
+            raise ConfigError(f"public key not found: {public_path}")
+        public_key = public_path.read_text(encoding="utf-8").strip()
+    failures = 0
+    for node in target_nodes(config, args.target):
+        host = node.get("host")
+        if not host:
+            print(f"fail: {node.get('name')} has no host")
+            failures += 1
+            continue
+        ssh_user = node_ssh_user(node, args.user)
+        ssh_port = node_ssh_port(node, config)
+        password = node_ssh_password(node, config)
+        command = install_public_key_command(node, public_key)
+        print(f"target {node.get('name')} ({node_os(node)}) {ssh_user}@{host}:{ssh_port}")
+        if args.dry_run:
+            print(f"  run: {command}")
+            continue
+        if not password:
+            print(f"fail: {node.get('name')}: password is required for one-time key bootstrap", file=sys.stderr)
+            failures += 1
+            continue
+        try:
+            run_paramiko_command(str(host), ssh_port, ssh_user, password, command)
             print(f"ok: {node.get('name')}")
         except Exception as exc:
             failures += 1
@@ -1299,6 +1416,14 @@ def parser() -> argparse.ArgumentParser:
     pr.add_argument("--repo-dir", default="/opt/BELKASQL-main")
     pr.add_argument("--dry-run", action="store_true")
     pr.set_defaults(func=cmd_preflight_remote)
+
+    bk = sub.add_parser("bootstrap-ssh-keys")
+    bk.add_argument("target")
+    bk.add_argument("config", nargs="?", default="cluster.yml")
+    bk.add_argument("--user", default="root")
+    bk.add_argument("--key-path", default=str(ROOT / "keys" / "belkasql_deploy_ed25519"))
+    bk.add_argument("--dry-run", action="store_true")
+    bk.set_defaults(func=cmd_bootstrap_ssh_keys)
 
     b = sub.add_parser("backup")
     b.add_argument("action", choices=["status", "full", "diff", "incr"])

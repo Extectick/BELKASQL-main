@@ -92,6 +92,29 @@ class BelkaSqlTests(unittest.TestCase):
 
         self.assertEqual(cli.node_ssh_password(node, config), "secret")
 
+    def test_node_ssh_identity_file_prefers_node_value(self) -> None:
+        node = {"name": "city-a", "ssh_identity_file": "keys/node"}
+        config = {"ssh": {"identity_file": "keys/global", "passwords": {"city-a": "secret"}}}
+
+        self.assertTrue(cli.node_ssh_identity_file(node, config).endswith(str(Path("keys") / "node")))
+
+    def test_native_ssh_args_include_identity_file(self) -> None:
+        args = cli.ssh_args(2222, "keys/deploy")
+
+        self.assertEqual(args, ["ssh", "-i", "keys/deploy", "-o", "IdentitiesOnly=yes", "-p", "2222"])
+
+    def test_windows_install_public_key_uses_admin_authorized_keys(self) -> None:
+        node = {"name": "city-a", "os": "windows"}
+        command = cli.install_public_key_command(node, "ssh-ed25519 AAAA test")
+
+        self.assertIn("EncodedCommand", command)
+        decoded = command.rsplit(" ", 1)[-1]
+        # UTF-16LE encoded PowerShell should contain the target file path when decoded.
+        import base64
+
+        script = base64.b64decode(decoded).decode("utf-16le")
+        self.assertIn("C:\\ProgramData\\ssh\\administrators_authorized_keys", script)
+
     def test_remote_preflight_windows_uses_powershell(self) -> None:
         config = load_simple_yaml(ROOT / "cluster.example.yml")
         node = {"name": "city-a", "os": "windows"}
@@ -107,11 +130,19 @@ class BelkaSqlTests(unittest.TestCase):
 
     def test_adopt_env_dry_run_redacts_secrets(self) -> None:
         parser = cli.parser()
-        args = parser.parse_args(["adopt-env", "--dry-run"])
         out = StringIO()
 
-        with redirect_stdout(out):
-            self.assertEqual(cli.cmd_adopt_env(args), 0)
+        with tempfile.TemporaryDirectory(prefix="belkasql-adopt-test-") as tmp:
+            args = parser.parse_args([
+                "adopt-env",
+                "--cluster-out",
+                str(Path(tmp) / "cluster.yml"),
+                "--secrets-out",
+                str(Path(tmp) / "secrets.yml"),
+                "--dry-run",
+            ])
+            with redirect_stdout(out):
+                self.assertEqual(cli.cmd_adopt_env(args), 0)
 
         text = out.getvalue()
         self.assertIn("cluster.yml", text)

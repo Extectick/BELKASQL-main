@@ -114,16 +114,29 @@ Fields:
 - `repo_dir` overrides the default remote repository directory for that node.
 - `ssh_user` overrides `belkasql apply --user` for that node.
 - `ssh_port` overrides SSH port for that node.
+- `ssh_identity_file` overrides the deploy SSH private key for that node.
 
 For non-interactive password SSH, keep passwords in ignored `secrets.yml`:
 
 ```yaml
 ssh:
+  identity_file: keys/belkasql_deploy_ed25519
   passwords:
     city-a: replace-with-city-a-password
     city-b: replace-with-city-b-password
     city-c: replace-with-city-c-password
 ```
+
+`ssh.identity_file` is preferred over password transport for `apply` and
+`preflight-remote`. Passwords can be kept only for one-time SSH key bootstrap:
+
+```bash
+./belkasql bootstrap-ssh-keys all cluster.yml --dry-run
+./belkasql bootstrap-ssh-keys all cluster.yml
+./belkasql preflight-remote all cluster.yml
+```
+
+The default key path is ignored by git: `keys/belkasql_deploy_ed25519`.
 
 Example Windows DB node:
 
@@ -135,6 +148,7 @@ Example Windows DB node:
     repo_dir: D:\GitRepositories\BELKASQL-main
     ssh_user: Администратор
     ssh_port: 22
+    ssh_identity_file: keys/belkasql_deploy_ed25519
     postgres: true
     etcd: true
     etcd_name: etcd-city-a
