@@ -74,6 +74,10 @@ class BelkaSqlTests(unittest.TestCase):
         command = cli.remote_role_command(city_a, r"D:\GitRepositories\BELKASQL-main", config)
 
         self.assertIn("powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand", command)
+        import base64
+
+        script = base64.b64decode(command.rsplit(" ", 1)[-1]).decode("utf-16le")
+        self.assertIn("belkasql-docker-config", script)
 
     def test_windows_remote_paths(self) -> None:
         node = {"name": "city-a", "os": "windows"}

@@ -868,6 +868,9 @@ def remote_role_command_windows(node: dict[str, Any], repo_dir: str, config: dic
 
     script = (
         "$ErrorActionPreference='Stop'; "
+        "$env:DOCKER_CONFIG = Join-Path $env:TEMP 'belkasql-docker-config'; "
+        "New-Item -ItemType Directory -Force -Path $env:DOCKER_CONFIG | Out-Null; "
+        "Set-Content -LiteralPath (Join-Path $env:DOCKER_CONFIG 'config.json') -Value '{}' -Encoding ascii; "
         f"Set-Location {ps_quote(workdir)}; "
         f"{ensure_network}; "
         f"docker compose --env-file {ps_quote(env_file)} -f {ps_quote(compose)} config -q; "
