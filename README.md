@@ -1,12 +1,13 @@
 # BELKASQL
 
-BELKASQL это стенд и набор docker-compose/`bash`-скриптов для PostgreSQL с двумя DB-узлами, Patroni, `etcd`, резервным копированием в MinIO и центральной наблюдаемостью через Prometheus, Grafana, Loki и Alertmanager.
+BELKASQL это стенд и набор docker-compose/`bash`-скриптов для PostgreSQL с несколькими DB-узлами, Patroni, `etcd`, резервным копированием в S3/MinIO и центральной наблюдаемостью через Prometheus, Grafana, Loki и Alertmanager.
 
 Проект не является «готовым продуктом из коробки». Это инженерный шаблон и набор автоматизаций, которые помогают развернуть и проверить конкретную схему отказоустойчивости. Часть сценариев хорошо покрыта локальной лабораторией, часть требует ручной проверки на реальных Linux-хостах.
 
 ## Что реально есть в репозитории
 
 - `db-node`: PostgreSQL 16, Patroni, PgBouncer, локальный HAProxy, локальный `etcd`, `postgres-exporter`, `node-exporter`, `promtail`
+- `db-node/docker-compose.replica.yml`: дополнительный PostgreSQL/Patroni-узел без нового `etcd` member
 - `control-node`: третий узел `etcd`, `node-exporter`, `promtail`
 - `lb-node`: облачный HAProxy + Keepalived, `node-exporter`, `promtail`
 - `storage-node`: MinIO, опционально `minio-admin` и `minio-mirror`, `node-exporter`, `promtail`
@@ -41,6 +42,7 @@ BELKASQL это стенд и набор docker-compose/`bash`-скриптов 
 
 - [docs/INSTALL_DB_INGRESS.md](docs/INSTALL_DB_INGRESS.md)
 - [docs/OPERATIONS_DB_INGRESS.md](docs/OPERATIONS_DB_INGRESS.md)
+- [docs/SCALING_DB_NODES.md](docs/SCALING_DB_NODES.md)
 
 ## Быстрый старт для локальной лаборатории
 

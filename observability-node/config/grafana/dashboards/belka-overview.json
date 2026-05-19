@@ -27,11 +27,16 @@
                 "value": null
               },
               {
+                "color": "orange",
+                "value": 0.67
+              },
+              {
                 "color": "green",
                 "value": 1
               }
             ]
-          }
+          },
+          "unit": "percentunit"
         },
         "overrides": []
       },
@@ -60,13 +65,13 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(up{job=\"postgres_exporter\"})",
+          "expr": "sum(pg_up) / count(pg_up)",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Postgres Exporters Up",
+      "title": "PostgreSQL узлы работают",
       "type": "stat"
     },
     {
@@ -88,11 +93,16 @@
                 "value": null
               },
               {
+                "color": "orange",
+                "value": 0.67
+              },
+              {
                 "color": "green",
                 "value": 1
               }
             ]
-          }
+          },
+          "unit": "percentunit"
         },
         "overrides": []
       },
@@ -121,13 +131,13 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(up{job=\"etcd\"})",
+          "expr": "sum(up{job=\"etcd\"}) / count(up{job=\"etcd\"})",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "etcd Targets Up",
+      "title": "etcd узлы работают",
       "type": "stat"
     },
     {
@@ -149,11 +159,16 @@
                 "value": null
               },
               {
+                "color": "orange",
+                "value": 0.67
+              },
+              {
                 "color": "green",
                 "value": 1
               }
             ]
-          }
+          },
+          "unit": "percentunit"
         },
         "overrides": []
       },
@@ -182,13 +197,13 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(up{job=\"haproxy\"})",
+          "expr": "sum(up{job=\"haproxy\"}) / count(up{job=\"haproxy\"})",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "HAProxy Targets Up",
+      "title": "HAProxy узлы работают",
       "type": "stat"
     },
     {

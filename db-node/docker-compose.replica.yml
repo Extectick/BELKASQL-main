@@ -1,38 +1,4 @@
 services:
-  etcd:
-    image: gcr.io/etcd-development/etcd:v3.5.18
-    container_name: ${ETCD_CONTAINER_NAME}
-    hostname: ${ETCD_HOSTNAME}
-    restart: unless-stopped
-    environment:
-      ETCDCTL_API: "3"
-    command:
-      - /usr/local/bin/etcd
-      - --name=${ETCD_NAME}
-      - --data-dir=/etcd-data
-      - --listen-client-urls=http://0.0.0.0:2379
-      - --advertise-client-urls=http://${ETCD_ADVERTISE_HOST}:2379
-      - --listen-peer-urls=http://0.0.0.0:2380
-      - --initial-advertise-peer-urls=http://${ETCD_ADVERTISE_HOST}:2380
-      - --initial-cluster=${ETCD_INITIAL_CLUSTER}
-      - --initial-cluster-state=${ETCD_INITIAL_CLUSTER_STATE:-new}
-      - --initial-cluster-token=${ETCD_CLUSTER_TOKEN}
-      - --heartbeat-interval=${ETCD_HEARTBEAT_INTERVAL}
-      - --election-timeout=${ETCD_ELECTION_TIMEOUT}
-    volumes:
-      - etcd_data:/etcd-data
-    ports:
-      - "${INTERNAL_BIND_IP}:${ETCD_CLIENT_PUBLISHED_PORT}:2379"
-      - "${INTERNAL_BIND_IP}:2380:2380"
-    healthcheck:
-      test: ["CMD", "etcdctl", "--endpoints=http://127.0.0.1:2379", "endpoint", "health"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    networks:
-      belka-net:
-        ipv4_address: ${ETCD_IP}
-
   db:
     build:
       context: .
@@ -70,15 +36,12 @@ services:
       - "${INTERNAL_BIND_IP}:5432:5432"
       - "${INTERNAL_BIND_IP}:${PATRONI_API_PUBLISHED_PORT}:8008"
       - "${INTERNAL_BIND_IP}:${PGBOUNCER_PUBLISHED_PORT}:6432"
-    depends_on:
-      etcd:
-        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fs http://127.0.0.1:8008/health >/dev/null && bash -lc '</dev/tcp/127.0.0.1/6432'"]
       interval: 10s
       timeout: 5s
-      retries: 20
-      start_period: 25s
+      retries: 30
+      start_period: 30s
     networks:
       belka-net:
         ipv4_address: ${DB_IP}
@@ -157,7 +120,6 @@ services:
           - ${LOCAL_DB_DOMAIN}
 
 volumes:
-  etcd_data:
   db_data:
 
 networks:
