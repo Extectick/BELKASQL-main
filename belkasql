@@ -7,16 +7,34 @@ usage() {
   cat <<'EOF'
 Usage:
   ./belkasql generate [cluster.yml] [--out DIR] [--dry-run]
-  ./belkasql check [cluster.yml]
+  ./belkasql check [cluster.yml] [--production]
   ./belkasql add-node NAME HOST [--postgres] [--etcd] [--no-etcd] [--monitoring]
+  ./belkasql remove-node NAME [--dry-run]
+  ./belkasql plan [cluster.yml]
+  ./belkasql diff-generated [cluster.yml]
+  ./belkasql adopt-env [--cluster-out cluster.yml] [--secrets-out secrets.yml] [--dry-run] [--force]
   ./belkasql status [cluster.yml]
-  ./belkasql apply TARGET [cluster.yml] [--user USER] [--repo-dir DIR] [--dry-run]
+  ./belkasql doctor [cluster.yml]
+  ./belkasql preflight-remote TARGET [cluster.yml] [--dry-run]
+  ./belkasql backup {status,full,diff,incr} [cluster.yml] [--from primary|replica|auto]
+  ./belkasql restore-test [cluster.yml] [--from primary|replica|auto] [--run]
+  ./belkasql apply TARGET [cluster.yml] [--user USER] [--repo-dir DIR] [--dry-run] [--allow-non-production]
 
 Commands:
   generate    Generate role env files from a central cluster.yml.
   check       Validate cluster.yml and generated compose/config files.
   add-node    Append a DB/control node to cluster.yml.
+  remove-node Remove a node from cluster.yml.
+  plan        Show generated roles and targets.
+  diff-generated
+              Compare generated env files with current local files.
+  adopt-env   Build cluster.yml/secrets.yml from existing local env files.
   status      Query Patroni and Prometheus from the cluster config.
+  doctor      Run practical network/service diagnostics.
+  preflight-remote
+              Check SSH, Docker and compose prerequisites on targets.
+  backup      Query or trigger pgBackRest through SSH + docker exec.
+  restore-test Print or run an isolated pgBackRest scratch restore.
   apply       Copy repo/configs to a target host and run the right compose.
 
 Examples:
@@ -30,7 +48,7 @@ EOF
 
 cmd="${1:-}"
 case "${cmd}" in
-  generate|check|add-node|status|apply)
+  generate|check|add-node|remove-node|plan|diff-generated|adopt-env|status|doctor|preflight-remote|backup|restore-test|apply)
     exec python3 "${ROOT_DIR}/scripts/belkasql.py" "$@"
     ;;
   -h|--help|help|"")

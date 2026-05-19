@@ -3,9 +3,14 @@
 **/*.env
 !.env.example
 !**/.env.example
+cluster.yml
+secrets.yml
+cluster.lock
+.generated/
 
 # Local notes / task scratch
 Task.txt
+ACCESS_LOCAL.md
 test.py
 test/
 steps/

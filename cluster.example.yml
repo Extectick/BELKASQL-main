@@ -1,0 +1,100 @@
+cluster:
+  name: belka
+  patroni_scope: belka-ha
+  preferred_primary: city-a
+  docker_network: belkasql_belka-net
+  docker_subnet: 172.28.0.0/16
+
+ports:
+  postgres: 5432
+  patroni_api: 8008
+  pgbouncer: 6432
+  postgres_exporter: 9187
+  node_exporter: 9100
+  local_write: 5000
+  local_read: 5001
+
+etcd:
+  heartbeat_interval: 2000
+  election_timeout: 10000
+  client_port: 2379
+  peer_port: 2380
+  token: replace-with-etcd-token
+
+backup:
+  stanza: belka
+  bucket: replace-with-s3-bucket
+  endpoint: replace-with-s3-endpoint
+  key: replace-with-s3-access-key
+  secret: replace-with-s3-secret-key
+  region: us-east-1
+  port: 9000
+  verify_tls: false
+
+postgres:
+  superuser_password: replace-with-strong-postgres-password
+  replication_password: replace-with-strong-replication-password
+  app_user_password: replace-with-strong-app-password
+
+observability:
+  enabled: true
+  host: 10.77.0.1
+  internal_bind_ip: 10.77.0.1
+  grafana_port: 13000
+  prometheus_port: 9090
+  loki_port: 3100
+  alertmanager_port: 9093
+  grafana_root_url: http://10.77.0.1:13000
+  grafana_admin_user: admin
+  grafana_admin_password: replace-with-strong-grafana-password
+  backup_metrics_targets: cloud-control=172.28.0.1:9189
+
+load_balancer:
+  enabled: true
+  host: 10.77.0.1
+  internal_bind_ip: 10.77.0.1
+  keepalived_enabled: false
+  write_domain: db-write.internal
+  read_domain: db-read.internal
+  write_port: 5000
+  read_port: 5001
+  metrics_port: 8404
+
+nodes:
+  - name: cloud-control
+    host: 10.77.0.1
+    role: control
+    etcd_name: etcd-cloud
+    etcd: true
+    postgres: false
+    monitoring: true
+    node_exporter_port: 9100
+    loki_push_url: http://10.77.0.1:3100/loki/api/v1/push
+
+  - name: city-a
+    host: 10.77.0.2
+    role: db
+    postgres: true
+    etcd: true
+    monitoring: true
+    preferred_primary: true
+    local_domain: db-city-a.internal
+    loki_push_url: http://10.77.0.1:3100/loki/api/v1/push
+
+  - name: city-b
+    host: 10.77.0.3
+    role: db
+    postgres: true
+    etcd: true
+    monitoring: true
+    local_domain: db-city-b.internal
+    loki_push_url: http://10.77.0.1:3100/loki/api/v1/push
+
+  - name: city-c
+    host: 10.77.0.4
+    role: db
+    postgres: true
+    etcd: false
+    monitoring: true
+    local_domain: db-city-c.internal
+    loki_push_url: http://10.77.0.1:3100/loki/api/v1/push

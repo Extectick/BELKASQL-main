@@ -1,7 +1,8 @@
 # Scaling PostgreSQL DB Nodes
 
 BELKASQL uses a fixed 3-member etcd quorum and a scalable PostgreSQL/Patroni
-node set.
+node set. The intended workflow is to describe nodes in `cluster.yml`, run
+`./belkasql generate`, and deploy the generated env files.
 
 Keep etcd at 3 members unless you are intentionally redesigning quorum. Add
 future database servers as PostgreSQL/Patroni replicas with
@@ -11,20 +12,34 @@ future database servers as PostgreSQL/Patroni replicas with
 
 1. Prepare the host and connect it to the private/VPN network.
 2. Copy this repository to the host.
-3. Create a DB env file from `db-node/.env.replica.example`.
-4. Set unique values:
-   - `COMPOSE_PROJECT_NAME`
-   - `INTERNAL_BIND_IP`
-   - `DB_CONTAINER_NAME`
-   - `DB_HOSTNAME`
-   - `DB_IP`
-   - `NODE_NAME`
-   - `NODE_API_HOST`
-   - `NODE_PG_HOST`
-   - exporter/container IPs
-5. Point `ETCD_HOST_1`, `ETCD_HOST_2`, `ETCD_HOST_3` at the existing etcd
-   members.
-6. Start the node:
+3. Add the node to `cluster.yml`, either manually:
+
+```yaml
+  - name: city-d
+    host: 10.77.0.5
+    role: db
+    postgres: true
+    etcd: false
+    monitoring: true
+    local_domain: db-city-d.internal
+```
+
+or with the helper:
+
+```bash
+./belkasql add-node city-d 10.77.0.5 --postgres --no-etcd
+```
+
+4. Generate and validate env files:
+
+```bash
+./belkasql generate cluster.yml
+./belkasql diff-generated cluster.yml
+./belkasql check cluster.yml
+./belkasql check cluster.yml --production
+```
+
+5. Start the node on the new host:
 
 ```bash
 cd db-node
@@ -32,6 +47,16 @@ docker network inspect belkasql_belka-net >/dev/null 2>&1 \
   || docker network create --subnet 172.28.0.0/16 belkasql_belka-net
 docker compose --env-file env/city-d.env -f docker-compose.replica.yml up -d --build
 ```
+
+Or let `belkasql apply` sync the repository and run the compose command:
+
+```bash
+./belkasql apply city-d cluster.yml --dry-run
+./belkasql apply city-d cluster.yml
+```
+
+For lab configs that intentionally still contain placeholders, add
+`--allow-non-production`. Do not use that flag for a real cluster.
 
 The new node should bootstrap from the current Patroni leader and appear in:
 
@@ -41,7 +66,8 @@ curl http://<new-node-ip>:8008/cluster
 
 ## Add the node to HAProxy
 
-Edit the LB env file and append the node to `DB_NODES`:
+`./belkasql generate` updates the LB env file automatically. The important
+generated value is `DB_NODES`:
 
 ```env
 DB_NODES=city-a=10.77.0.2 city-b=10.77.0.3 city-c=10.77.0.4 city-d=10.77.0.5
@@ -53,9 +79,16 @@ Then recreate the LB container:
 docker compose --env-file lb-node/env/cloud-lb-a.env -f lb-node/docker-compose.yml up -d --force-recreate lb
 ```
 
+or:
+
+```bash
+./belkasql apply lb cluster.yml
+```
+
 ## Add the node to monitoring
 
-Edit the observability env file and append the node to the target lists:
+`./belkasql generate` also updates the observability env file automatically.
+The important generated values are:
 
 ```env
 POSTGRES_TARGETS=city-a=10.77.0.2:9187 city-b=10.77.0.3:9187 city-c=10.77.0.4:9187 city-d=10.77.0.5:9187
@@ -69,6 +102,12 @@ Then recreate Prometheus:
 
 ```bash
 docker compose --env-file observability-node/env/cloud-observability.env -f observability-node/docker-compose.yml up -d --force-recreate prometheus
+```
+
+or:
+
+```bash
+./belkasql apply observability cluster.yml
 ```
 
 ## Backup behavior

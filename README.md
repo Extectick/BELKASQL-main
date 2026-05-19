@@ -107,6 +107,19 @@ bash ./disaster-recovery.sh
 - `test-failover.sh`: проверяет отказ текущего primary и возврат узла
 - `disaster-recovery.sh`: проверяет чтение метаданных и scratch restore из вторичного MinIO
 - `bootstrap-db-ingress.sh`: интерактивно генерирует `env` для профиля DB-ingress
+- `belkasql generate`: генерирует `env` из центрального `cluster.yml`
+- `belkasql check`: проверяет `cluster.yml`, сгенерированные compose-файлы и Prometheus config
+- `belkasql check --production`: дополнительно запрещает placeholder/example значения перед реальным deploy
+- `belkasql add-node`: добавляет новый узел в `cluster.yml`
+- `belkasql remove-node`: удаляет узел из `cluster.yml`
+- `belkasql apply`: синхронизирует репозиторий на целевой хост и запускает нужный compose
+- `belkasql plan`: показывает роли узлов и файлы, которые будут сгенерированы
+- `belkasql diff-generated`: сравнивает текущие `env` со сгенерированными, секреты в выводе скрыты
+- `belkasql adopt-env`: собирает `cluster.yml` и `secrets.yml` из существующих локальных `env`
+- `belkasql status`: показывает краткое состояние Patroni/Prometheus
+- `belkasql doctor`: проверяет доступность основных портов и печатает сводку кластера
+- `belkasql backup`: проверяет/запускает pgBackRest через SSH и `docker exec` на выбранном DB-узле
+- `belkasql restore-test`: запускает изолированный scratch restore из backup во временный каталог
 - `cleanup-db-ingress.sh`: чистит сгенерированные backup-файлы и вспомогательные артефакты bootstrap’а
 
 ## Честные ограничения проекта
@@ -117,12 +130,24 @@ bash ./disaster-recovery.sh
 - Потеря `cloud` в DB-ingress профиле не обязана ломать SQL-доступ, но в этот момент деградируют backup/observability и сужается окно безопасного failover.
 - Локальная лаборатория использует один Docker-host и поэтому местами отличается от production. Самый заметный пример: backup-скрипты честно умеют делать fallback с replica на primary.
 - `health-check-node.sh` не доказывает, что весь профиль «готов к production»; он лишь проверяет локальные признаки живости.
+- `belkasql restore-test` проверяет, что backup можно развернуть в отдельный временный каталог внутри DB-контейнера; он не переключает production-узлы и не запускает отдельный PostgreSQL-инстанс.
 
-## Политика `env`
+## Политика конфигов и секретов
 
 - реальные `.env` игнорируются Git’ом
 - для реальных файлов должны существовать `*.env.example`
 - общие шаблоны лежат рядом с ролью, например [db-node/.env.example](db-node/.env.example)
+- топология кластера хранится в `cluster.yml`, пример лежит в [cluster.example.yml](cluster.example.yml)
+- секреты можно вынести в `secrets.yml`; он автоматически накладывается поверх `cluster.yml` и тоже игнорируется Git’ом
+- после `belkasql generate` создаётся `cluster.lock` с хэшем сгенерированных файлов
+
+Подробно: [docs/CLUSTER_CONFIG.md](docs/CLUSTER_CONFIG.md).
+
+На Windows без `bash` используйте PowerShell-обёртку:
+
+```powershell
+.\belkasql.ps1 plan cluster.example.yml
+```
 
 ## Локальная гигиена
 
