@@ -83,6 +83,11 @@ class BelkaSqlTests(unittest.TestCase):
         self.assertIn("EncodedCommand", cli.remote_prepare_command(node, r"D:\GitRepositories\BELKASQL-main"))
         self.assertIn("EncodedCommand", cli.remote_extract_command(node, "C:/Windows/Temp/a.tar.gz", r"D:\GitRepositories\BELKASQL-main"))
 
+    def test_linux_remote_extract_can_use_sudo(self) -> None:
+        node = {"name": "city-c", "os": "linux", "ssh_sudo": True}
+
+        self.assertIn("sudo tar -xzf", cli.remote_extract_command(node, "/tmp/a.tar.gz", "/opt/BELKASQL-main"))
+
     def test_double_quoted_yaml_unescapes_windows_path(self) -> None:
         self.assertEqual(parse_scalar(r'"D:\\GitRepositories\\BELKASQL-main"'), r"D:\GitRepositories\BELKASQL-main")
 

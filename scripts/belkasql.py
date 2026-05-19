@@ -889,6 +889,8 @@ def remote_prepare_command(node: dict[str, Any], repo_dir: str) -> str:
     if node_os(node) == "windows":
         script = f"$ErrorActionPreference='Stop'; New-Item -ItemType Directory -Force -Path {ps_quote(repo_dir)} | Out-Null"
         return powershell_command(script)
+    if truthy(node.get("ssh_sudo")):
+        return f"sudo mkdir -p {shlex.quote(repo_dir)}"
     return f"mkdir -p {shlex.quote(repo_dir)}"
 
 
@@ -901,6 +903,8 @@ def remote_extract_command(node: dict[str, Any], remote_archive: str, repo_dir: 
             f"Remove-Item -Force {ps_quote(remote_archive)}"
         )
         return powershell_command(script)
+    if truthy(node.get("ssh_sudo")):
+        return f"sudo tar -xzf {shlex.quote(remote_archive)} -C {shlex.quote(repo_dir)} && rm -f {shlex.quote(remote_archive)}"
     return f"tar -xzf {shlex.quote(remote_archive)} -C {shlex.quote(repo_dir)} && rm -f {shlex.quote(remote_archive)}"
 
 
@@ -1461,6 +1465,11 @@ def main(argv: list[str]) -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main(sys.argv[1:]))
+    except subprocess.CalledProcessError as exc:
+        if exc.stdout:
+            print(exc.stdout, end="", file=sys.stderr)
+        print(f"belkasql: command failed with exit code {exc.returncode}: {' '.join(map(str, exc.cmd))}", file=sys.stderr)
+        raise SystemExit(exc.returncode)
     except ConfigError as exc:
         print(f"belkasql: {exc}", file=sys.stderr)
         raise SystemExit(2)
