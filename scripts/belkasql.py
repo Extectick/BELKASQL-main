@@ -1332,14 +1332,22 @@ def choose_db_node(config: dict[str, Any], preference: str) -> tuple[dict[str, A
     return fallback, "unknown"
 
 
-def pgbackrest_remote_command(action: str, stanza: str, container: str) -> str:
-    quoted_container = shlex.quote(container)
+def pgbackrest_inner_command(action: str, stanza: str) -> str:
     quoted_stanza = shlex.quote(stanza)
     if action == "status":
-        inner = f"pgbackrest --stanza={quoted_stanza} info"
-    else:
-        inner = f"pgbackrest --stanza={quoted_stanza} --type={shlex.quote(action)} backup && pgbackrest --stanza={quoted_stanza} info"
-    return f"docker exec {quoted_container} bash -lc {shlex.quote(inner)}"
+        return f"pgbackrest --stanza={quoted_stanza} info"
+    return f"pgbackrest --stanza={quoted_stanza} --type={shlex.quote(action)} backup && pgbackrest --stanza={quoted_stanza} info"
+
+
+def docker_exec_bash_command(node: dict[str, Any], container: str, inner: str) -> str:
+    if node_os(node) == "windows":
+        script = f"docker exec {ps_quote(container)} bash -lc {ps_quote(inner)}"
+        return powershell_command(script)
+    return f"docker exec {shlex.quote(container)} bash -lc {shlex.quote(inner)}"
+
+
+def pgbackrest_remote_command(node: dict[str, Any], action: str, stanza: str, container: str) -> str:
+    return docker_exec_bash_command(node, container, pgbackrest_inner_command(action, stanza))
 
 
 def cmd_backup(args: argparse.Namespace) -> int:
@@ -1351,7 +1359,7 @@ def cmd_backup(args: argparse.Namespace) -> int:
     container = env.get("DB_CONTAINER_NAME")
     if not container:
         raise ConfigError(f"generated env has no DB_CONTAINER_NAME for {node['name']}")
-    command = pgbackrest_remote_command(args.action, str(stanza), container)
+    command = pgbackrest_remote_command(node, args.action, str(stanza), container)
     print(f"backup target: {node['name']} ({role})")
     return run_remote_node(node, config, args.user, command, args.dry_run)
 
@@ -1373,7 +1381,7 @@ def cmd_restore_test(args: argparse.Namespace) -> int:
         "find \"$TMP\" -maxdepth 2 | head -40; "
         "rm -rf \"$TMP\""
     )
-    command = f"docker exec {container} bash -lc {shlex.quote(inner)}"
+    command = docker_exec_bash_command(node, container.strip("'"), inner)
     print(f"restore-test target: {node['name']} ({role})")
     if not args.run:
         print("Dry run. Use --run to execute the remote scratch restore.")

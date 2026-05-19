@@ -101,6 +101,12 @@ class BelkaSqlTests(unittest.TestCase):
         self.assertIn("admin@10.77.0.2:22", text)
         self.assertIn("key", text)
 
+    def test_windows_docker_exec_uses_powershell_quoting(self) -> None:
+        node = {"name": "city-a", "os": "windows"}
+        command = cli.pgbackrest_remote_command(node, "status", "belka", "city-a-db")
+
+        self.assertIn("EncodedCommand", command)
+
     def test_windows_remote_paths(self) -> None:
         node = {"name": "city-a", "os": "windows"}
         archive = Path("belkasql-apply-test.tar.gz")

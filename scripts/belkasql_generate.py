@@ -436,15 +436,22 @@ def build(config: dict[str, Any]) -> dict[Path, str]:
         output[Path("lb-node") / "env" / "cloud-lb-a.env"] = env_text(values)
 
     if truthy(observability.get("enabled")):
-        etcd_targets = " ".join(f"{node_label(n)}={n['host']}:{etcd.get('client_port', 2379)}" for n in etcd_nodes)
+        cloud_etcd_scrape_host = observability.get("cloud_control_etcd_scrape_host", "")
+        cloud_node_scrape_host = observability.get("cloud_control_node_exporter_scrape_host", "")
+        cloud_lb_a_host = observability.get("cloud_lb_a_host", "")
+        etcd_targets = " ".join(
+            f"{node_label(n)}={n['host']}:{etcd.get('client_port', 2379)}"
+            for n in etcd_nodes
+            if not (n.get("role") == "control" and cloud_etcd_scrape_host)
+        )
         postgres_targets = " ".join(f"{node_label(n)}={n['host']}:{n.get('postgres_exporter_port', ports.get('postgres_exporter', 9187))}" for n in db_nodes)
         node_targets = " ".join(
             f"{node_label(n)}={n['host']}:{n.get('node_exporter_port', ports.get('node_exporter', 9100))}"
             for n in nodes
-            if truthy(n.get("monitoring"), True)
+            if truthy(n.get("monitoring"), True) and not (n.get("role") == "control" and cloud_node_scrape_host)
         )
         haproxy_targets = ""
-        if truthy(lb.get("enabled")):
+        if truthy(lb.get("enabled")) and not cloud_lb_a_host:
             haproxy_targets = f"{lb.get('name', 'cloud-lb-a')}={lb.get('host')}:{lb.get('metrics_port', 8404)}"
         values = {
             "COMPOSE_PROJECT_NAME": "cloud-observability",
@@ -471,21 +478,21 @@ def build(config: dict[str, Any]) -> dict[Path, str]:
             "HAPROXY_TARGETS": haproxy_targets,
             "BACKUP_METRICS_TARGETS": observability.get("backup_metrics_targets", ""),
             "CLOUD_CONTROL_HOST": observability.get("host", ""),
-            "CLOUD_CONTROL_ETCD_SCRAPE_HOST": "",
-            "CLOUD_CONTROL_NODE_EXPORTER_SCRAPE_HOST": "",
+            "CLOUD_CONTROL_ETCD_SCRAPE_HOST": cloud_etcd_scrape_host,
+            "CLOUD_CONTROL_NODE_EXPORTER_SCRAPE_HOST": cloud_node_scrape_host,
             "CLOUD_CONTROL_ETCD_METRICS_PORT": etcd.get("client_port", 2379),
             "CLOUD_CONTROL_NODE_EXPORTER_PORT": ports.get("node_exporter", 9100),
-            "CLOUD_LB_A_HOST": "",
-            "CLOUD_LB_A_METRICS_PORT": "",
-            "CLOUD_LB_A_NODE_EXPORTER_PORT": "",
+            "CLOUD_LB_A_HOST": cloud_lb_a_host,
+            "CLOUD_LB_A_METRICS_PORT": observability.get("cloud_lb_a_metrics_port", ""),
+            "CLOUD_LB_A_NODE_EXPORTER_PORT": observability.get("cloud_lb_a_node_exporter_port", ""),
             "CLOUD_LB_B_HOST": "",
             "CLOUD_LB_B_METRICS_PORT": "",
             "CLOUD_LB_B_NODE_EXPORTER_PORT": "",
             "MINIO_PRIMARY_HOST": observability.get("host", ""),
-            "MINIO_PRIMARY_API_SCRAPE_HOST": "",
-            "MINIO_PRIMARY_NODE_EXPORTER_SCRAPE_HOST": "",
+            "MINIO_PRIMARY_API_SCRAPE_HOST": observability.get("minio_primary_api_scrape_host", ""),
+            "MINIO_PRIMARY_NODE_EXPORTER_SCRAPE_HOST": observability.get("minio_primary_node_exporter_scrape_host", ""),
             "MINIO_PRIMARY_API_PORT": 9000,
-            "MINIO_PRIMARY_NODE_EXPORTER_PORT": 9101,
+            "MINIO_PRIMARY_NODE_EXPORTER_PORT": observability.get("minio_primary_node_exporter_port", 9101),
             "MINIO_SECONDARY_HOST": "",
             "MINIO_SECONDARY_API_SCRAPE_HOST": "",
             "MINIO_SECONDARY_NODE_EXPORTER_SCRAPE_HOST": "",
