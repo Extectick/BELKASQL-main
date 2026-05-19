@@ -89,6 +89,18 @@ class BelkaSqlTests(unittest.TestCase):
         self.assertIn(" up -d", command)
         self.assertNotIn("--build", command)
 
+    def test_backup_dry_run_uses_node_ssh_identity(self) -> None:
+        node = {"name": "city-a", "host": "10.77.0.2", "ssh_user": "admin"}
+        config = {"ssh": {"identity_file": "keys/deploy"}}
+        out = StringIO()
+
+        with redirect_stdout(out):
+            self.assertEqual(cli.run_remote_node(node, config, "root", "docker ps", dry_run=True), 0)
+
+        text = out.getvalue()
+        self.assertIn("admin@10.77.0.2:22", text)
+        self.assertIn("key", text)
+
     def test_windows_remote_paths(self) -> None:
         node = {"name": "city-a", "os": "windows"}
         archive = Path("belkasql-apply-test.tar.gz")

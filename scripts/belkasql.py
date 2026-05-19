@@ -1259,6 +1259,27 @@ def run_remote(user_host: str, command: str, dry_run: bool) -> int:
     return result.returncode
 
 
+def run_remote_node(node: dict[str, Any], config: dict[str, Any], default_user: str, command: str, dry_run: bool) -> int:
+    host = node.get("host")
+    if not host:
+        raise ConfigError(f"node has no host: {node.get('name')}")
+    ssh_user = node_ssh_user(node, default_user)
+    ssh_port = node_ssh_port(node, config)
+    identity_file = node_ssh_identity_file(node, config)
+    password = "" if identity_file else node_ssh_password(node, config)
+    ssh_target = f"{ssh_user}@{host}" if ssh_user else str(host)
+    transport = f"key {identity_file}" if identity_file else ("password" if password else "ssh")
+    print(f"ssh {ssh_target}:{ssh_port} ({transport}) {command}")
+    if dry_run:
+        return 0
+    if password:
+        run_paramiko_command(str(host), ssh_port, ssh_user, password, command)
+        return 0
+    result = run([*ssh_args(ssh_port, identity_file), ssh_target, command], check=False)
+    print(result.stdout, end="")
+    return result.returncode
+
+
 def generated_env_for_node(config: dict[str, Any], node: dict[str, Any]) -> dict[str, str]:
     project = str(node["name"])
     env_path = Path("db-node") / "env" / f"{project}.env"
@@ -1326,14 +1347,13 @@ def cmd_backup(args: argparse.Namespace) -> int:
     validate(config)
     node, role = choose_db_node(config, args.from_node)
     env = generated_env_for_node(config, node)
-    user_host = ssh_target_for_node(node, args.user)
     stanza = env.get("BACKREST_STANZA", config.get("backup", {}).get("stanza", "belka"))
     container = env.get("DB_CONTAINER_NAME")
     if not container:
         raise ConfigError(f"generated env has no DB_CONTAINER_NAME for {node['name']}")
     command = pgbackrest_remote_command(args.action, str(stanza), container)
     print(f"backup target: {node['name']} ({role})")
-    return run_remote(user_host, command, args.dry_run)
+    return run_remote_node(node, config, args.user, command, args.dry_run)
 
 
 def cmd_restore_test(args: argparse.Namespace) -> int:
@@ -1341,7 +1361,6 @@ def cmd_restore_test(args: argparse.Namespace) -> int:
     validate(config)
     node, role = choose_db_node(config, args.from_node)
     env = generated_env_for_node(config, node)
-    user_host = ssh_target_for_node(node, args.user)
     stanza = shlex.quote(env.get("BACKREST_STANZA", config.get("backup", {}).get("stanza", "belka")))
     container = shlex.quote(env.get("DB_CONTAINER_NAME", ""))
     if container == "''":
@@ -1358,9 +1377,9 @@ def cmd_restore_test(args: argparse.Namespace) -> int:
     print(f"restore-test target: {node['name']} ({role})")
     if not args.run:
         print("Dry run. Use --run to execute the remote scratch restore.")
-        print(f"ssh {user_host} {command}")
+        run_remote_node(node, config, args.user, command, dry_run=True)
         return 0
-    return run_remote(user_host, command, dry_run=False)
+    return run_remote_node(node, config, args.user, command, dry_run=False)
 
 
 def parser() -> argparse.ArgumentParser:
