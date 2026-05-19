@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ./belkasql generate [cluster.yml] [--out DIR] [--dry-run]
+  ./belkasql check [cluster.yml]
+  ./belkasql add-node NAME HOST [--postgres] [--etcd] [--no-etcd] [--monitoring]
+  ./belkasql status [cluster.yml]
+  ./belkasql apply TARGET [cluster.yml] [--user USER] [--repo-dir DIR] [--dry-run]
+
+Commands:
+  generate    Generate role env files from a central cluster.yml.
+  check       Validate cluster.yml and generated compose/config files.
+  add-node    Append a DB/control node to cluster.yml.
+  status      Query Patroni and Prometheus from the cluster config.
+  apply       Copy repo/configs to a target host and run the right compose.
+
+Examples:
+  cp cluster.example.yml cluster.yml
+  ./belkasql generate cluster.yml
+  ./belkasql generate cluster.yml --dry-run
+  ./belkasql add-node city-d 10.77.0.5 --postgres --no-etcd
+  ./belkasql check cluster.yml
+EOF
+}
+
+cmd="${1:-}"
+case "${cmd}" in
+  generate|check|add-node|status|apply)
+    exec python3 "${ROOT_DIR}/scripts/belkasql.py" "$@"
+    ;;
+  -h|--help|help|"")
+    usage
+    ;;
+  *)
+    echo "Unknown command: ${cmd}" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
