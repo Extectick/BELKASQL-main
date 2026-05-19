@@ -485,6 +485,7 @@ def build(config: dict[str, Any]) -> dict[Path, str]:
             "CLOUD_LB_A_HOST": cloud_lb_a_host,
             "CLOUD_LB_A_METRICS_PORT": observability.get("cloud_lb_a_metrics_port", ""),
             "CLOUD_LB_A_NODE_EXPORTER_PORT": observability.get("cloud_lb_a_node_exporter_port", ""),
+            "CLOUD_LB_A_NODE_EXPORTER_SCRAPE_HOST": observability.get("cloud_lb_a_node_exporter_scrape_host", ""),
             "CLOUD_LB_B_HOST": "",
             "CLOUD_LB_B_METRICS_PORT": "",
             "CLOUD_LB_B_NODE_EXPORTER_PORT": "",
