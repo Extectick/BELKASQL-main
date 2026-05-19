@@ -11,6 +11,7 @@ services:
       - NET_RAW
     environment:
       LB_NAME: ${LB_NAME}
+      KEEPALIVED_ENABLED: ${KEEPALIVED_ENABLED:-true}
       KEEPALIVED_STATE: ${KEEPALIVED_STATE}
       KEEPALIVED_PRIORITY: ${KEEPALIVED_PRIORITY}
       LB_IP: ${LB_IP}
