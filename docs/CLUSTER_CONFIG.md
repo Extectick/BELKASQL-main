@@ -116,6 +116,7 @@ Fields:
 - `ssh_port` overrides SSH port for that node.
 - `ssh_identity_file` overrides the deploy SSH private key for that node.
 - `ssh_sudo: true` makes Linux archive prepare/extract use passwordless sudo.
+- `skip_build: true` runs `docker compose up -d` without `--build`.
 
 For non-interactive password SSH, keep passwords in ignored `secrets.yml`:
 

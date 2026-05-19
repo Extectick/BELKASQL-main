@@ -79,6 +79,16 @@ class BelkaSqlTests(unittest.TestCase):
         script = base64.b64decode(command.rsplit(" ", 1)[-1]).decode("utf-16le")
         self.assertIn("belkasql-docker-config", script)
 
+    def test_remote_role_command_can_skip_build(self) -> None:
+        config = load_simple_yaml(ROOT / "cluster.example.yml")
+        city_a = dict(next(node for node in config["nodes"] if node["name"] == "city-a"))
+        city_a["skip_build"] = True
+
+        command = cli.remote_role_command(city_a, "/opt/BELKASQL-main", config)
+
+        self.assertIn(" up -d", command)
+        self.assertNotIn("--build", command)
+
     def test_windows_remote_paths(self) -> None:
         node = {"name": "city-a", "os": "windows"}
         archive = Path("belkasql-apply-test.tar.gz")

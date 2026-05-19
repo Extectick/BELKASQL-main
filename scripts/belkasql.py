@@ -828,17 +828,18 @@ def remote_role_command_linux(node: dict[str, Any], repo_dir: str, config: dict[
     name = node["name"]
     repo = shlex.quote(repo_dir)
     ensure_network = ensure_network_command(config)
+    up_command = "up -d" if truthy(node.get("skip_build")) else "up -d --build"
     if role == "lb":
-        return f"cd {repo} && {ensure_network} && docker compose --env-file lb-node/env/cloud-lb-a.env -f lb-node/docker-compose.yml config -q && docker compose --env-file lb-node/env/cloud-lb-a.env -f lb-node/docker-compose.yml up -d --build"
+        return f"cd {repo} && {ensure_network} && docker compose --env-file lb-node/env/cloud-lb-a.env -f lb-node/docker-compose.yml config -q && docker compose --env-file lb-node/env/cloud-lb-a.env -f lb-node/docker-compose.yml {up_command}"
     if role == "observability":
-        return f"cd {repo} && {ensure_network} && docker compose --env-file observability-node/env/cloud-observability.env -f observability-node/docker-compose.yml config -q && docker compose --env-file observability-node/env/cloud-observability.env -f observability-node/docker-compose.yml up -d --build"
+        return f"cd {repo} && {ensure_network} && docker compose --env-file observability-node/env/cloud-observability.env -f observability-node/docker-compose.yml config -q && docker compose --env-file observability-node/env/cloud-observability.env -f observability-node/docker-compose.yml {up_command}"
     if node.get("postgres"):
         compose = "docker-compose.yml" if node.get("etcd") else "docker-compose.replica.yml"
         env_name = shlex.quote(f"env/{name}.env")
-        return f"cd {repo}/db-node && {ensure_network} && docker compose --env-file {env_name} -f {compose} config -q && docker compose --env-file {env_name} -f {compose} up -d --build"
+        return f"cd {repo}/db-node && {ensure_network} && docker compose --env-file {env_name} -f {compose} config -q && docker compose --env-file {env_name} -f {compose} {up_command}"
     if node.get("etcd"):
         env_name = shlex.quote(f"control-node/env/{name}.env")
-        return f"cd {repo} && {ensure_network} && docker compose --env-file {env_name} -f control-node/docker-compose.yml config -q && docker compose --env-file {env_name} -f control-node/docker-compose.yml up -d --build"
+        return f"cd {repo} && {ensure_network} && docker compose --env-file {env_name} -f control-node/docker-compose.yml config -q && docker compose --env-file {env_name} -f control-node/docker-compose.yml {up_command}"
     raise ConfigError(f"do not know how to apply node: {name}")
 
 
@@ -866,6 +867,7 @@ def remote_role_command_windows(node: dict[str, Any], repo_dir: str, config: dic
     else:
         raise ConfigError(f"do not know how to apply node: {name}")
 
+    up_command = "up -d" if truthy(node.get("skip_build")) else "up -d --build"
     script = (
         "$ErrorActionPreference='Stop'; "
         "$env:DOCKER_CONFIG = Join-Path $env:TEMP 'belkasql-docker-config'; "
@@ -874,7 +876,7 @@ def remote_role_command_windows(node: dict[str, Any], repo_dir: str, config: dic
         f"Set-Location {ps_quote(workdir)}; "
         f"{ensure_network}; "
         f"docker compose --env-file {ps_quote(env_file)} -f {ps_quote(compose)} config -q; "
-        f"docker compose --env-file {ps_quote(env_file)} -f {ps_quote(compose)} up -d --build"
+        f"docker compose --env-file {ps_quote(env_file)} -f {ps_quote(compose)} {up_command}"
     )
     return powershell_command(script)
 
